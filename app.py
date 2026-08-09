@@ -1,4 +1,4 @@
-from flask import Flask, render_template_string, request, redirect
+from flask import Flask, render_template_string, request
 import requests
 
 app = Flask(__name__)
@@ -27,7 +27,9 @@ HTML_TEMPLATE = """
         .format-card { background: rgba(30, 25, 48, 0.6); border: 2px solid rgba(255, 255, 255, 0.05); border-radius: 16px; padding: 15px; cursor: pointer; display: flex; flex-direction: column; align-items: center; text-align: center; }
         .format-card.selected { border-color: #22c55e; background: rgba(34, 197, 94, 0.1); }
         .format-card input { display: none; }
-        .download-btn { width: 100%; padding: 16px; background: linear-gradient(135deg, #9333ea, #c084fc); color: white; border: none; border-radius: 16px; font-size: 1.1rem; font-weight: 700; cursor: pointer; }
+        .download-btn { width: 100%; padding: 16px; background: linear-gradient(135deg, #9333ea, #c084fc); color: white; border: none; border-radius: 16px; font-size: 1.1rem; font-weight: 700; cursor: pointer; text-align: center; display: block; text-decoration: none; }
+        .result-box { margin-top: 25px; text-align: center; background: rgba(30, 25, 48, 0.8); padding: 20px; border-radius: 16px; border: 1px solid #22c55e; }
+        .error-box { margin-top: 25px; text-align: center; background: rgba(50, 20, 20, 0.8); padding: 15px; border-radius: 16px; border: 1px solid #ef4444; color: #f87171; }
     </style>
 </head>
 <body>
@@ -35,23 +37,39 @@ HTML_TEMPLATE = """
     <div class="container">
         <form action="/download" method="POST">
             <div class="input-group">
-                <input type="url" name="url" placeholder="ضع رابط فيديو تيك توك هنا..." required>
+                <input type="url" name="url" placeholder="ضع رابط فيديو تيك توك هنا..." value="{{ original_url or '' }}" required>
             </div>
             <div class="formats-grid">
-                <label class="format-card selected" onclick="selectCard(this)">
-                    <input type="radio" name="format" value="hd" checked>
+                <label class="format-card {{ 'selected' if fmt != 'mp3' else '' }}" onclick="selectCard(this)">
+                    <input type="radio" name="format" value="hd" {{ 'checked' if fmt != 'mp3' else '' }}>
                     <div style="font-size: 1.5rem;">🎬</div>
-                    <div style="font-weight:700;">MP4 - جودة عالية</div>
+                    <div style="font-weight:700;">MP4 - فيديو بدون علامة مائية</div>
                 </label>
-                <label class="format-card" onclick="selectCard(this)">
-                    <input type="radio" name="format" value="mp3">
+                <label class="format-card {{ 'selected' if fmt == 'mp3' else '' }}" onclick="selectCard(this)">
+                    <input type="radio" name="format" value="mp3" {{ 'checked' if fmt == 'mp3' else '' }}>
                     <div style="font-size: 1.5rem;">🎵</div>
                     <div style="font-weight:700;">MP3 - صوت فقط</div>
                 </label>
             </div>
-            <button type="submit" class="download-btn">تنزيل الفيديو الآن</button>
+            <button type="submit" class="download-btn">جلب رابط التحميل</button>
         </form>
+
+        {% if download_url %}
+        <div class="result-box">
+            <p style="margin-bottom: 15px; font-weight:700; color:#4ade80;">✅ تم تجهيز الملف بنجاح!</p>
+            <a href="{{ download_url }}" target="_blank" download class="download-btn" style="background: #22c55e;">
+                اضغط هنا لتنزيل {{ 'الصوت (MP3)' if fmt == 'mp3' else 'الفيديو (MP4)' }}
+            </a>
+        </div>
+        {% endif %}
+
+        {% if error %}
+        <div class="error-box">
+            {{ error }}
+        </div>
+        {% endif %}
     </div>
+
     <script>
         function selectCard(card) {
             document.querySelectorAll('.format-card').forEach(c => c.classList.remove('selected'));
@@ -65,27 +83,38 @@ HTML_TEMPLATE = """
 
 @app.route('/')
 def home():
-    return render_template_string(HTML_TEMPLATE)
+    return render_template_string(HTML_TEMPLATE, download_url=None, error=None, fmt='hd', original_url='')
 
 @app.route('/download', methods=['POST'])
 def download():
-    url = request.form.get('url')
+    url = request.form.get('url', '').strip()
     fmt = request.form.get('format', 'hd')
-    
+
+    if not url:
+        return render_template_string(HTML_TEMPLATE, download_url=None, error="يرجى إدخال رابط صحيح.", fmt=fmt, original_url=url)
+
     try:
-        api_url = f"https://api.tiklydown.eu.org/api/download?url={url}"
-        res = requests.get(api_url).json()
-        
-        if fmt == 'mp3':
-            download_url = res.get('music', {}).get('play_url')
-        else:
-            download_url = res.get('video', {}).get('noWatermark') or res.get('video', {}).get('watermark')
-            
-        if download_url:
-            return redirect(download_url)
-    except Exception:
-        pass
-    return "<h3 style='color:white; text-align:center;'>عذراً، فشل جلب الفيديو. تأكد من الرابط.</h3>"
+        # استخدام API سريع وموثوق
+        api_endpoint = f"https://www.tikwm.com/api/?url={url}"
+        response = requests.get(api_endpoint, timeout=10).json()
+
+        if response.get('code') == 0 and 'data' in response:
+            data = response['data']
+            if fmt == 'mp3':
+                file_url = data.get('music')
+            else:
+                file_url = data.get('play') or data.get('wmplay')
+
+            if file_url:
+                # التأكد من صحة الرابط
+                if not file_url.startswith('http'):
+                    file_url = 'https://www.tikwm.com' + file_url
+                return render_template_string(HTML_TEMPLATE, download_url=file_url, error=None, fmt=fmt, original_url=url)
+
+        return render_template_string(HTML_TEMPLATE, download_url=None, error="لم نتمكن من جلب هذا الفيديو. تأكد من أن الحساب غير خاص وأن الرابط صحيح.", fmt=fmt, original_url=url)
+
+    except Exception as e:
+        return render_template_string(HTML_TEMPLATE, download_url=None, error="حدث خطأ في الاتصال بالسيرفر. حاول مرة أخرى.", fmt=fmt, original_url=url)
 
 if __name__ == '__main__':
     app.run()
