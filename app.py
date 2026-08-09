@@ -10,6 +10,11 @@ HTML_TEMPLATE = """
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>تنزيل فيديوهات تيك توك</title>
+    
+    <!-- كود Google AdSense الخاص بك -->
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3392468179606260"
+     crossorigin="anonymous"></script>
+
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Cairo', sans-serif; }
@@ -120,7 +125,6 @@ def download_file():
 
     req = requests.get(file_url, stream=True)
     
-    # تحديد صيغة الملف الصحيحة ونوع الوسائط تلقائياً
     if fmt == 'mp3':
         ext = "mp3"
         content_type = "audio/mpeg"
