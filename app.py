@@ -1,4 +1,4 @@
-from flask import Flask, render_template_string, request, Response
+from flask import Flask, render_template_string, request, redirect
 import requests
 
 app = Flask(__name__)
@@ -19,7 +19,7 @@ HTML_TEMPLATE = """
                               radial-gradient(circle at 90% 80%, rgba(40, 20, 70, 0.3) 0%, transparent 40%);
             color: #ffffff; min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 40px 20px;
         }
-        h1 { font-size: 2rem; font-weight: 800; margin-bottom: 25px; text-align: center; background: linear-gradient(45deg, #ffffff, #c4b5fd); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        h1 { font-size: 1.8rem; font-weight: 800; margin-bottom: 25px; text-align: center; background: linear-gradient(45deg, #ffffff, #c4b5fd); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
         .container { width: 100%; max-width: 600px; background: rgba(22, 18, 35, 0.7); border: 1px solid rgba(255, 255, 255, 0.08); backdrop-filter: blur(16px); border-radius: 24px; padding: 30px; box-shadow: 0 20px 40px rgba(0,0,0,0.5); }
         .input-group input { width: 100%; padding: 16px; background: rgba(15, 12, 25, 0.8); border: 2px solid rgba(168, 85, 247, 0.4); border-radius: 16px; color: #fff; font-size: 1rem; outline: none; margin-bottom: 20px; }
         .formats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 25px; }
@@ -29,11 +29,12 @@ HTML_TEMPLATE = """
         .format-card input { display: none; }
         .download-btn { width: 100%; padding: 16px; background: linear-gradient(135deg, #9333ea, #c084fc); color: white; border: none; border-radius: 16px; font-size: 1.1rem; font-weight: 700; cursor: pointer; text-align: center; display: block; text-decoration: none; }
         .result-box { margin-top: 25px; text-align: center; background: rgba(30, 25, 48, 0.8); padding: 20px; border-radius: 16px; border: 1px solid #22c55e; }
+        .instruction { font-size: 0.85rem; color: #cbd5e1; margin-top: 10px; line-height: 1.6; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 10px; }
         .error-box { margin-top: 25px; text-align: center; background: rgba(50, 20, 20, 0.8); padding: 15px; border-radius: 16px; border: 1px solid #ef4444; color: #f87171; }
     </style>
 </head>
 <body>
-    <h1>تنزيل فيديوهات تيك توك بجميع الصيغ</h1>
+    <h1>تنزيل فيديوهات تيك توك للستوديو</h1>
     <div class="container">
         <form action="/process" method="POST">
             <div class="input-group">
@@ -51,22 +52,25 @@ HTML_TEMPLATE = """
                     <div style="font-weight:700;">MP3 - صوت فقط</div>
                 </label>
             </div>
-            <button type="submit" class="download-btn">جلب رابط التحميل</button>
+            <button type="submit" class="download-btn">جلب الفيديو</button>
         </form>
 
         {% if download_url %}
         <div class="result-box">
-            <p style="margin-bottom: 15px; font-weight:700; color:#4ade80;">✅ تم تجهيز الملف بنجاح!</p>
-            <a href="/download_file?file_url={{ download_url }}&fmt={{ fmt }}" class="download-btn" style="background: #22c55e;">
-                ⬇️ تنزيل {{ 'الصوت (MP3)' if fmt == 'mp3' else 'الفيديو (MP4)' }} إلى جهازك
+            <p style="margin-bottom: 12px; font-weight:700; color:#4ade80;">✅ جاهز للحفظ في الاستوديو!</p>
+            <a href="{{ download_url }}" target="_blank" class="download-btn" style="background: #22c55e;">
+                📲 فتح الفيديو للحفظ المباشر
             </a>
+            <div class="instruction">
+                💡 <b>طريقة الحفظ في استوديو الصور للهاتف:</b><br>
+                • <b>آيفون (iOS):</b> اضغط الزر أعلاه، ثم اضغط زر **المشاركة** بأسفل الشاشة واختر **حفظ الفيديو (Save Video)**.<br>
+                • <b>أندرويد (Android):</b> اضغط الزر أعلاه، ثم اضغط مطوّلاً على الفيديو واختر **حفظ/تنزيل الفيديو**.
+            </div>
         </div>
         {% endif %}
 
         {% if error %}
-        <div class="error-box">
-            {{ error }}
-        </div>
+        <div class="error-box">{{ error }}</div>
         {% endif %}
     </div>
 
@@ -99,41 +103,16 @@ def process():
 
         if response.get('code') == 0 and 'data' in response:
             data = response['data']
-            if fmt == 'mp3':
-                file_url = data.get('music')
-            else:
-                file_url = data.get('play') or data.get('wmplay')
+            file_url = data.get('music') if fmt == 'mp3' else (data.get('play') or data.get('wmplay'))
 
             if file_url:
                 if not file_url.startswith('http'):
                     file_url = 'https://www.tikwm.com' + file_url
                 return render_template_string(HTML_TEMPLATE, download_url=file_url, error=None, fmt=fmt, original_url=url)
 
-        return render_template_string(HTML_TEMPLATE, download_url=None, error="تعذر جلب هذا الفيديو، تأكد من صحة الرابط.", fmt=fmt, original_url=url)
+        return render_template_string(HTML_TEMPLATE, download_url=None, error="تعذر جلب الفيديو، تأكد من صحة الرابط.", fmt=fmt, original_url=url)
     except Exception:
-        return render_template_string(HTML_TEMPLATE, download_url=None, error="حدث خطأ في الاتصال بالخادم.", fmt=fmt, original_url=url)
-
-@app.route('/download_file')
-def download_file():
-    file_url = request.args.get('file_url')
-    fmt = request.args.get('fmt', 'hd')
-    
-    if not file_url:
-        return "رابط غير صالح", 400
-
-    # جلب الملف مجزئًا وإجباره على التنزيل
-    req = requests.get(file_url, stream=True)
-    ext = "mp3" if fmt == "mp3" else "mp4"
-    filename = f"tiktok_download.{ext}"
-    content_type = "audio/mpeg" if fmt == "mp3" else "video/mp4"
-
-    return Response(
-        req.iter_content(chunk_size=1024),
-        headers={
-            "Content-Disposition": f"attachment; filename={filename}",
-            "Content-Type": content_type
-        }
-    )
+        return render_template_string(HTML_TEMPLATE, download_url=None, error="حدث خطأ أثناء الاتصال بالخادم.", fmt=fmt, original_url=url)
 
 if __name__ == '__main__':
     app.run()
