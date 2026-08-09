@@ -1,4 +1,4 @@
-from flask import Flask, render_template_string, request
+from flask import Flask, render_template_string, request, Response
 import requests
 
 app = Flask(__name__)
@@ -35,7 +35,7 @@ HTML_TEMPLATE = """
 <body>
     <h1>تنزيل فيديوهات تيك توك بجميع الصيغ</h1>
     <div class="container">
-        <form action="/download" method="POST">
+        <form action="/process" method="POST">
             <div class="input-group">
                 <input type="url" name="url" placeholder="ضع رابط فيديو تيك توك هنا..." value="{{ original_url or '' }}" required>
             </div>
@@ -57,8 +57,8 @@ HTML_TEMPLATE = """
         {% if download_url %}
         <div class="result-box">
             <p style="margin-bottom: 15px; font-weight:700; color:#4ade80;">✅ تم تجهيز الملف بنجاح!</p>
-            <a href="{{ download_url }}" target="_blank" download class="download-btn" style="background: #22c55e;">
-                اضغط هنا لتنزيل {{ 'الصوت (MP3)' if fmt == 'mp3' else 'الفيديو (MP4)' }}
+            <a href="/download_file?file_url={{ download_url }}&fmt={{ fmt }}" class="download-btn" style="background: #22c55e;">
+                ⬇️ تنزيل {{ 'الصوت (MP3)' if fmt == 'mp3' else 'الفيديو (MP4)' }} إلى جهازك
             </a>
         </div>
         {% endif %}
@@ -85,8 +85,8 @@ HTML_TEMPLATE = """
 def home():
     return render_template_string(HTML_TEMPLATE, download_url=None, error=None, fmt='hd', original_url='')
 
-@app.route('/download', methods=['POST'])
-def download():
+@app.route('/process', methods=['POST'])
+def process():
     url = request.form.get('url', '').strip()
     fmt = request.form.get('format', 'hd')
 
@@ -94,7 +94,6 @@ def download():
         return render_template_string(HTML_TEMPLATE, download_url=None, error="يرجى إدخال رابط صحيح.", fmt=fmt, original_url=url)
 
     try:
-        # استخدام API سريع وموثوق
         api_endpoint = f"https://www.tikwm.com/api/?url={url}"
         response = requests.get(api_endpoint, timeout=10).json()
 
@@ -106,15 +105,35 @@ def download():
                 file_url = data.get('play') or data.get('wmplay')
 
             if file_url:
-                # التأكد من صحة الرابط
                 if not file_url.startswith('http'):
                     file_url = 'https://www.tikwm.com' + file_url
                 return render_template_string(HTML_TEMPLATE, download_url=file_url, error=None, fmt=fmt, original_url=url)
 
-        return render_template_string(HTML_TEMPLATE, download_url=None, error="لم نتمكن من جلب هذا الفيديو. تأكد من أن الحساب غير خاص وأن الرابط صحيح.", fmt=fmt, original_url=url)
+        return render_template_string(HTML_TEMPLATE, download_url=None, error="تعذر جلب هذا الفيديو، تأكد من صحة الرابط.", fmt=fmt, original_url=url)
+    except Exception:
+        return render_template_string(HTML_TEMPLATE, download_url=None, error="حدث خطأ في الاتصال بالخادم.", fmt=fmt, original_url=url)
 
-    except Exception as e:
-        return render_template_string(HTML_TEMPLATE, download_url=None, error="حدث خطأ في الاتصال بالسيرفر. حاول مرة أخرى.", fmt=fmt, original_url=url)
+@app.route('/download_file')
+def download_file():
+    file_url = request.args.get('file_url')
+    fmt = request.args.get('fmt', 'hd')
+    
+    if not file_url:
+        return "رابط غير صالح", 400
+
+    # جلب الملف مجزئًا وإجباره على التنزيل
+    req = requests.get(file_url, stream=True)
+    ext = "mp3" if fmt == "mp3" else "mp4"
+    filename = f"tiktok_download.{ext}"
+    content_type = "audio/mpeg" if fmt == "mp3" else "video/mp4"
+
+    return Response(
+        req.iter_content(chunk_size=1024),
+        headers={
+            "Content-Disposition": f"attachment; filename={filename}",
+            "Content-Type": content_type
+        }
+    )
 
 if __name__ == '__main__':
     app.run()
